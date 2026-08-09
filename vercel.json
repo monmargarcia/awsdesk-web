@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://awsdesk-api.vercel.app/api/$1" }
+  ]
+}
