@@ -20,4 +20,9 @@ export const api = {
   alarms: (id) => req(`/api/v1/accounts/${id}/cloudwatch/alarms`),
   secrets: (id) => req(`/api/v1/accounts/${id}/secrets`),
   topology: (id) => req(`/api/v1/accounts/${id}/topology`),
+  logGroups: (id) => req(`/api/v1/accounts/${id}/logs/groups`),
+  logQuery: (id, body) =>
+    req(`/api/v1/accounts/${id}/logs/query`, { method: "POST", body: JSON.stringify(body) }),
+  logMetrics: (id, logGroupName, startTime, endTime) =>
+    req(`/api/v1/accounts/${id}/logs/metrics?logGroupName=${encodeURIComponent(logGroupName)}&startTime=${startTime}&endTime=${endTime}`),
 };

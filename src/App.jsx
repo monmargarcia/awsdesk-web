@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "./lib/api.js";
-
-const C = {
-  bg: "#080b12", card: "#0e1420", border: "#1d2736", text: "#f5f7fa",
-  dim: "#8b95a5", faint: "#5a6577", green: "#00C896", red: "#f5455c", blue: "#4f9cf9",
-};
-const mono = { fontFamily: "'SF Mono','Fira Code',ui-monospace,monospace" };
+import { C, mono } from "./lib/theme.js";
+import LogsPage from "./pages/Logs.jsx";
 
 const Dot = ({ ok }) => (
   <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%",
@@ -16,7 +12,12 @@ const Dot = ({ ok }) => (
 function Login({ onDone }) {
   const [u, setU] = useState(""); const [p, setP] = useState(""); const [err, setErr] = useState("");
   const submit = async () => {
-    try { await api.login(u, p); onDone(); } catch { setErr("Invalid credentials"); }
+    try {
+      await api.login(u, p);
+      onDone();
+    } catch (e) {
+      setErr(e.message === "unauthorized" ? "Invalid credentials" : `Couldn't reach the server: ${e.message}`);
+    }
   };
   const inp = { width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`,
     borderRadius: 6, color: C.text, padding: "10px 12px", fontSize: 14, marginBottom: 10, outline: "none" };
@@ -47,17 +48,22 @@ export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [acctError, setAcctError] = useState("");
 
   useEffect(() => {
     if (!authed) return;
+    setAcctError("");
     api.accounts().then((r) => {
       setAccounts(r.accounts);
       if (r.accounts[0]) setAccount(r.accounts[0]);
-    }).catch(() => setAuthed(false));
+    }).catch((e) => {
+      if (e.message === "unauthorized") { setAuthed(false); return; }
+      setAcctError(e.message);
+    });
   }, [authed]);
 
   const load = useCallback(async () => {
-    if (!account) return;
+    if (!account || tab === "Logs") return;
     setLoading(true); setError(""); setData(null);
     try {
       const fn = { ECS: api.ecs, RDS: api.rds, CloudWatch: api.alarms, Secrets: api.secrets, Topology: api.topology }[tab];
@@ -94,7 +100,7 @@ export default function App() {
           <button onClick={load} style={{ background: C.card, border: `1px solid ${C.border}`, color: C.dim, borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer" }}>↻ Refresh</button>
         </div>
         <div style={{ display: "flex", maxWidth: 1100, margin: "0 auto" }}>
-          {["ECS", "RDS", "CloudWatch", "Secrets", "Topology"].map((t) => (
+          {["ECS", "RDS", "CloudWatch", "Logs", "Secrets", "Topology"].map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{ background: "none", border: "none", padding: "10px 2px",
               marginRight: 24, cursor: "pointer", fontSize: 13,
               color: tab === t ? C.text : C.dim, fontWeight: tab === t ? 500 : 400,
@@ -104,10 +110,15 @@ export default function App() {
       </div>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px" }}>
-        {loading && <div style={{ color: C.faint }}>Loading {tab} from {account?.name}…</div>}
-        {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
+        {acctError && (
+          <div style={{ color: C.red, fontSize: 13, border: `1px solid ${C.red}66`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
+            Couldn't load accounts: {acctError}
+          </div>
+        )}
+        {!acctError && loading && <div style={{ color: C.faint }}>Loading {tab} from {account?.name}…</div>}
+        {!acctError && error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
 
-        {!loading && !error && tab !== "Topology" && (
+        {!acctError && !loading && !error && tab !== "Topology" && tab !== "Logs" && (
           rows.length === 0 ? (
             <div style={{ textAlign: "center", padding: "70px 0", color: C.faint }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>⬡</div>
@@ -124,9 +135,11 @@ export default function App() {
           ))
         )}
 
-        {!loading && !error && tab === "Topology" && data?.nodes && (
+        {!acctError && !loading && !error && tab === "Topology" && data?.nodes && (
           <TopologyView nodes={data.nodes} />
         )}
+
+        {!acctError && tab === "Logs" && account && <LogsPage accountId={account.id} />}
 
         {tab === "Secrets" && !loading && (
           <div style={{ marginTop: 14, fontSize: 12, color: C.faint }}>
