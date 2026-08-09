@@ -63,23 +63,38 @@ function LiveTail({ accountId, group }) {
   const [filter, setFilter] = useState("");
   const [lines, setLines] = useState([]);
   const [connected, setConnected] = useState(false);
-  const [streamError, setStreamError] = useState("");
   const [paused, setPaused] = useState(false);
+  const [reconnectNonce, setReconnectNonce] = useState(0);
   const boxRef = useRef(null);
 
+  // Reset history only when the user actually changes what they're tailing —
+  // not on every reconnect (see effect below).
   useEffect(() => {
-    setLines([]); setStreamError(""); setConnected(false);
+    setLines([]);
+    setReconnectNonce(0);
+  }, [accountId, group, filter]);
+
+  useEffect(() => {
+    setConnected(false);
     const url = `/api/v1/accounts/${accountId}/logs/tail?logGroupName=${encodeURIComponent(group)}` +
       (filter ? `&filter=${encodeURIComponent(filter)}` : "");
     const es = new EventSource(url, { withCredentials: true });
+    let cleanedUp = false;
     es.onopen = () => setConnected(true);
     es.onmessage = (e) => {
       const event = JSON.parse(e.data);
       setLines((prev) => [...prev.slice(-499), event]);
     };
-    es.onerror = () => { setConnected(false); setStreamError("Live tail disconnected"); };
-    return () => es.close();
-  }, [accountId, group, filter]);
+    es.onerror = () => {
+      // Vercel serverless functions have a hard execution time limit, so this stream
+      // gets force-closed periodically — that's expected, not a real failure, so we
+      // transparently reconnect instead of surfacing a dead-end error.
+      setConnected(false);
+      es.close();
+      if (!cleanedUp) setTimeout(() => setReconnectNonce((n) => n + 1), 1000);
+    };
+    return () => { cleanedUp = true; es.close(); };
+  }, [accountId, group, filter, reconnectNonce]);
 
   useEffect(() => {
     if (paused || !boxRef.current) return;
@@ -97,7 +112,6 @@ function LiveTail({ accountId, group }) {
           {connected ? "live" : "connecting…"}
         </span>
       </div>
-      {streamError && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{streamError}</div>}
       <div ref={boxRef} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
         style={{ height: 520, overflowY: "auto", background: C.card, border: `1px solid ${C.border}`,
           borderRadius: 8, padding: "10px 14px" }}>
